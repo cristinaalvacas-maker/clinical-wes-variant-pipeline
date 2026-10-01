@@ -137,11 +137,12 @@ def qc_filter(v, min_qual, min_dp, min_gq):
 
 
 def frequency_filter(v, maf_cutoff):
-    af = fnum(v.csq.get("gnomAD_AF"), 0.0)
-    if af > maf_cutoff:
-        return False, f"gnomAD AF {af} > {maf_cutoff}"
+    af = fnum(v.csq.get("gnomAD_AF"), None)
+    if af is None:
+        return True, "gnomAD_AF=UNKNOWN"
+    if af >= maf_cutoff:
+        return False, f"gnomAD_AF {af} >= {maf_cutoff}"
     return True, ""
-
 
 def consequence_filter(v):
     impact = v.csq.get("IMPACT", "")
@@ -209,10 +210,12 @@ def prioritize(variants, panel):
             score += 2
             ev.append(f"in HPO candidate-gene panel ({gene})")
 
-        af = fnum(c.get("gnomAD_AF"), 0.0)
-        if af == 0:
+        af = fnum(c.get("gnomAD_AF"), None)
+        if af is None:
+            ev.append("gnomAD: frequency unavailable (UNKNOWN)")
+        elif af == 0:
             score += 2
-            ev.append("novel (absent from gnomAD)")
+            ev.append("gnomAD AF = 0 (reported value)")
         elif af < 1e-4:
             score += 1
             ev.append(f"ultra-rare (gnomAD AF {af})")
@@ -317,7 +320,7 @@ def main():
     ap.add_argument("--out-prefix", default="results/candidates",
                     help="output prefix for .tsv and .report.txt")
     ap.add_argument("--model", choices=["dominant", "recessive"], default="dominant")
-    ap.add_argument("--maf-dominant", type=float, default=1e-4)
+    ap.add_argument("--maf-dominant", type=float, default=1e-5)
     ap.add_argument("--maf-recessive", type=float, default=0.05)
     ap.add_argument("--min-qual", type=float, default=30.0)
     ap.add_argument("--min-dp", type=int, default=20)
