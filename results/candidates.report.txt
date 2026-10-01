@@ -1,0 +1,102 @@
+VARIANT FILTERING & PRIORITIZATION REPORT
+==================================================
+Input VCF:            data/demo_annotated.vcf
+Candidate gene panel: data/hpo_gene_panel.txt
+Inheritance model:    dominant
+MAF cutoff:           0.0001 (dominant) / 0.05 (recessive)
+QC cutoffs:           QUAL>=30.0 DP>=20 GQ>=20
+
+Variants processed:   23
+Variants retained:    9
+Removed by filter:    QC (2), consequence (1), frequency (11)
+
+CANDIDATE VARIANTS (ranked)
+--------------------------------------------------
+
+[1] 5:33333333 T>G (SMARCB1, NM_003073.5:c.1120T>G, NP_003064.2:p.Tyr374*) score=9
+    Consequence: stop_gained [HIGH] | genotype 0/1 | gnomAD AF 0
+    Evidence:
+      - in HPO candidate-gene panel (SMARCB1)
+      - novel (absent from gnomAD)
+      - high-impact consequence (stop_gained)
+      - CADD 38.1 (top 1% deleterious)
+      - ClinVar: pathogenic
+
+[2] 12:49413570 G>A (KMT2A, NM_001470.4:c.5871G>A, NP_001461.2:p.Arg1957Gln) score=8
+    Consequence: missense_variant [MODERATE] | genotype 0/1 | gnomAD AF 0.000002
+    Evidence:
+      - in HPO candidate-gene panel (KMT2A)
+      - ultra-rare (gnomAD AF 2e-06)
+      - moderate-impact consequence (missense_variant)
+      - REVEL 0.87 (damaging)
+      - CADD 28.4 (top 1% deleterious)
+      - SIFT: deleterious
+      - PolyPhen: probably_damaging
+
+[3] 14:14141414 G>A (FOXP2, NM_014491.4:c.1500G>A, NP_055306.1:p.Met500Ile) score=8
+    Consequence: missense_variant [MODERATE] | genotype 0/1 | gnomAD AF 0.000007
+    Evidence:
+      - in HPO candidate-gene panel (FOXP2)
+      - ultra-rare (gnomAD AF 7e-06)
+      - moderate-impact consequence (missense_variant)
+      - REVEL 0.79 (damaging)
+      - CADD 25.8 (top 1% deleterious)
+      - SIFT: deleterious
+      - PolyPhen: probably_damaging
+
+[4] 18:18181818 T>C (KMT2A, NM_001470.4:c.4100T>C, NP_001461.2:p.Leu1367Pro) score=8
+    Consequence: missense_variant [MODERATE] | genotype 0/1 | gnomAD AF 0.0000008
+    Evidence:
+      - in HPO candidate-gene panel (KMT2A)
+      - ultra-rare (gnomAD AF 8e-07)
+      - moderate-impact consequence (missense_variant)
+      - REVEL 0.91 (damaging)
+      - CADD 29.6 (top 1% deleterious)
+      - SIFT: deleterious
+      - PolyPhen: probably_damaging
+
+[5] 15:55555555 G>C (ARID1B, NM_020732.4:c.2000+1G>C, .) score=7
+    Consequence: splice_donor_variant [HIGH] | genotype 0/1 | gnomAD AF 0.000003
+    Evidence:
+      - in HPO candidate-gene panel (ARID1B)
+      - ultra-rare (gnomAD AF 3e-06)
+      - high-impact consequence (splice_donor_variant)
+      - CADD 30.5 (top 1% deleterious)
+      - ClinVar: likely pathogenic
+
+[6] 16:89311234 CT>C (ANKRD11, NM_013275.6:c.1890del, NP_037407.4:p.Lys630fs) score=7
+    Consequence: frameshift_variant [HIGH] | genotype 0/1 | gnomAD AF 0
+    Evidence:
+      - in HPO candidate-gene panel (ANKRD11)
+      - novel (absent from gnomAD)
+      - high-impact consequence (frameshift_variant)
+      - CADD 35.2 (top 1% deleterious)
+
+[7] 19:77777777 C>G (KDM5C, NM_004187.4:c.800C>G, NP_004178.2:p.Pro267Arg) score=7
+    Consequence: missense_variant [MODERATE] | genotype 0/1 | gnomAD AF 0.00009
+    Evidence:
+      - in HPO candidate-gene panel (KDM5C)
+      - ultra-rare (gnomAD AF 9e-05)
+      - moderate-impact consequence (missense_variant)
+      - CADD 22.4 (top 1% deleterious)
+      - SIFT: deleterious
+      - PolyPhen: probably_damaging
+
+[8] 21:21212121 C>G (ANKRD11, NM_013275.6:c.8000C>G, NP_037407.4:p.Ter2667Trp) score=7
+    Consequence: stop_lost [HIGH] | genotype 0/1 | gnomAD AF 0
+    Evidence:
+      - in HPO candidate-gene panel (ANKRD11)
+      - novel (absent from gnomAD)
+      - high-impact consequence (stop_lost)
+      - CADD 33.8 (top 1% deleterious)
+
+[9] 10:10101010 A>G (ANKRD11, NM_013275.6:c.900A>G, NP_037407.4:p.Ile300Met) score=6
+    Consequence: missense_variant [MODERATE] | genotype 0/1 | gnomAD AF 0.00005
+    Evidence:
+      - in HPO candidate-gene panel (ANKRD11)
+      - ultra-rare (gnomAD AF 5e-05)
+      - moderate-impact consequence (missense_variant)
+      - CADD 20.1 (top 1% deleterious)
+      - SIFT: deleterious
+
+NOTE: computational prioritization supports, but does not replace, expert clinical interpretation (ACMG/AMP).

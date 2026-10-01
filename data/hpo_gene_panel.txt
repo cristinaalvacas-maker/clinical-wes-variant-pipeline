@@ -1,0 +1,11 @@
+# Candidate gene panel for the demo case.
+# Simulated phenotype: neurodevelopmental disorder with intellectual disability
+# (HPO terms: HP:0001249 intellectual disability, HP:0001250 seizure,
+#  HP:0004322 short stature). In a real setting this list would come from
+# HPO-driven virtual panel tools (e.g. PanelApp, Phenolyzer).
+KMT2A
+ARID1B
+ANKRD11
+KDM5C
+FOXP2
+SMARCB1

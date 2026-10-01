@@ -1,0 +1,31 @@
+##fileformat=VCFv4.2
+##source=synthetic-demo-for-variant-pipeline
+##INFO=<ID=DP,Number=1,Type=Integer,Description="Total read depth">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read depth">
+##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">
+##INFO=<ID=CSQ,Number=.,Type=String,Description="Consequence annotations from Ensembl VEP. Format: Allele|Consequence|IMPACT|SYMBOL|HGVSc|HGVSp|gnomAD_AF|CADD_PHRED|SIFT|PolyPhen|REVEL|ClinVar_CLNSIG">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	SAMPLE
+12	49413570	.	G	A	320	PASS	DP=85;CSQ=A|missense_variant|MODERATE|KMT2A|NM_001470.4:c.5871G>A|NP_001461.2:p.Arg1957Gln|0.000002|28.4|deleterious|probably_damaging|0.87|.	GT:DP:GQ	0/1:85:99
+7	150648197	.	C	T	210	PASS	DP=60;CSQ=T|synonymous_variant|LOW|ARID1B|NM_020732.4:c.1234C>T|NP_065783.2:p.Leu412Leu|0.00001|8.2|tolerated|benign|0.12|.	GT:DP:GQ	0/1:60:99
+2	179390716	.	G	A	450	PASS	DP=120;CSQ=A|missense_variant|MODERATE|TTN|NM_001267550.2:c.10234G>A|NP_001254479.1:p.Val3412Ile|0.12|12.1|tolerated|benign|0.21|benign	GT:DP:GQ	0/1:120:99
+6	89321455	.	T	C	18	LowQual	DP=12;CSQ=C|missense_variant|MODERATE|ANKRD11|NM_013275.6:c.2341T>C|NP_037407.4:p.Ser781Pro|0.000008|24.9|deleterious|possibly_damaging|0.72|.	GT:DP:GQ	0/1:12:40
+16	89311234	.	CT	C	380	PASS	DP=70;CSQ=C|frameshift_variant|HIGH|ANKRD11|NM_013275.6:c.1890del|NP_037407.4:p.Lys630fs|0|35.2|.|.|.|.	GT:DP:GQ	0/1:70:99
+4	12345678	.	A	G	290	PASS	DP=55;CSQ=G|missense_variant|MODERATE|KMT2A|NM_001470.4:c.3210A>G|NP_001461.2:p.Ile1070Met|0.0004|18.3|tolerated|possibly_damaging|0.45|uncertain_significance	GT:DP:GQ	0/1:55:98
+9	34567890	.	C	T	310	PASS	DP=77;CSQ=T|missense_variant|MODERATE|BRCA2|NM_000059.4:c.123C>T|NP_000050.3:p.Ala41Ala|0.03|9.8|tolerated|benign|0.08|benign	GT:DP:GQ	0/1:77:99
+1	11111111	.	G	T	260	PASS	DP=48;CSQ=T|intron_variant|MODIFIER|ARID1B|NM_020732.4:c.500+12G>T|.|0.001|4.1|.|.|.|.	GT:DP:GQ	0/1:48:97
+3	22222222	.	A	C	275	PASS	DP=52;CSQ=C|missense_variant|MODERATE|KMT2A|NM_001470.4:c.900A>C|NP_001461.2:p.Glu300Asp|0.008|15.2|tolerated|benign|0.31|.	GT:DP:GQ	1/1:52:99
+5	33333333	.	T	G	240	PASS	DP=44;CSQ=G|stop_gained|HIGH|SMARCB1|NM_003073.5:c.1120T>G|NP_003064.2:p.Tyr374*|0|38.1|.|.|.|pathogenic	GT:DP:GQ	0/1:44:95
+11	44444444	.	C	A	25	LowQual	DP=9;CSQ=A|missense_variant|MODERATE|KMT2A|NM_001470.4:c.1500C>A|NP_001461.2:p.Asn500Lys|0.00001|26.7|deleterious|probably_damaging|0.81|.	GT:DP:GQ	0/1:9:35
+15	55555555	.	G	C	300	PASS	DP=66;CSQ=C|splice_donor_variant|HIGH|ARID1B|NM_020732.4:c.2000+1G>C|.|0.000003|30.5|.|.|.|likely_pathogenic	GT:DP:GQ	0/1:66:99
+17	66666666	.	A	T	285	PASS	DP=58;CSQ=T|3_prime_UTR_variant|MODIFIER|ANKRD11|NM_013275.6:c.*120A>T|.|0.02|3.2|.|.|.|.	GT:DP:GQ	0/1:58:98
+19	77777777	.	C	G	295	PASS	DP=61;CSQ=G|missense_variant|MODERATE|KDM5C|NM_004187.4:c.800C>G|NP_004178.2:p.Pro267Arg|0.00009|22.4|deleterious|probably_damaging|0.68|.	GT:DP:GQ	0/1:61:99
+22	88888888	.	T	A	270	PASS	DP=50;CSQ=A|synonymous_variant|LOW|KMT2A|NM_001470.4:c.2400T>A|NP_001461.2:p.Pro800Pro|0.0002|6.5|.|.|.|.	GT:DP:GQ	0/1:50:96
+8	99999999	.	G	C	280	PASS	DP=54;CSQ=C|missense_variant|MODERATE|ARID1B|NM_020732.4:c.3456G>C|NP_065783.2:p.Gln1152His|0.06|11.9|tolerated|benign|0.15|benign	GT:DP:GQ	0/1:54:97
+10	10101010	.	A	G	265	PASS	DP=47;CSQ=G|missense_variant|MODERATE|ANKRD11|NM_013275.6:c.900A>G|NP_037407.4:p.Ile300Met|0.00005|20.1|deleterious|benign|0.52|.	GT:DP:GQ	0/1:47:94
+13	13131313	.	C	T	255	PASS	DP=45;CSQ=T|intron_variant|MODIFIER|KMT2A|NM_001470.4:c.100-8C>T|.|0.004|2.8|.|.|.|.	GT:DP:GQ	0/1:45:93
+14	14141414	.	G	A	290	PASS	DP=63;CSQ=A|missense_variant|MODERATE|FOXP2|NM_014491.4:c.1500G>A|NP_055306.1:p.Met500Ile|0.000007|25.8|deleterious|probably_damaging|0.79|.	GT:DP:GQ	0/1:63:99
+18	18181818	.	T	C	275	PASS	DP=56;CSQ=C|missense_variant|MODERATE|KMT2A|NM_001470.4:c.4100T>C|NP_001461.2:p.Leu1367Pro|0.0000008|29.6|deleterious|probably_damaging|0.91|.	GT:DP:GQ	0/1:56:98
+20	20202020	.	A	T	250	PASS	DP=42;CSQ=T|missense_variant|MODERATE|ARID1B|NM_020732.4:c.789A>T|NP_065783.2:p.Lys263Asn|0.0003|16.4|tolerated|possibly_damaging|0.38|.	GT:DP:GQ	0/0:42:99
+21	21212121	.	C	G	260	PASS	DP=49;CSQ=G|stop_lost|HIGH|ANKRD11|NM_013275.6:c.8000C>G|NP_037407.4:p.Ter2667Trp|0|33.8|.|.|.|.	GT:DP:GQ	0/1:49:95
+2	23232323	.	G	A	245	PASS	DP=46;CSQ=A|5_prime_UTR_variant|MODIFIER|KDM5C|NM_004187.4:c.-45G>A|.|0.01|5.5|.|.|.|.	GT:DP:GQ	0/1:46:92

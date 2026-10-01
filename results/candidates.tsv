@@ -1,0 +1,10 @@
+rank	chrom	pos	ref	alt	gene	HGVSc	HGVSp	consequence	IMPACT	genotype	gnomAD_AF	CADD	REVEL	SIFT	PolyPhen	ClinVar	score
+1	5	33333333	T	G	SMARCB1	NM_003073.5:c.1120T>G	NP_003064.2:p.Tyr374*	stop_gained	HIGH	0/1	0	38.1	.	.	.	pathogenic	9
+2	12	49413570	G	A	KMT2A	NM_001470.4:c.5871G>A	NP_001461.2:p.Arg1957Gln	missense_variant	MODERATE	0/1	0.000002	28.4	0.87	deleterious	probably_damaging	.	8
+3	14	14141414	G	A	FOXP2	NM_014491.4:c.1500G>A	NP_055306.1:p.Met500Ile	missense_variant	MODERATE	0/1	0.000007	25.8	0.79	deleterious	probably_damaging	.	8
+4	18	18181818	T	C	KMT2A	NM_001470.4:c.4100T>C	NP_001461.2:p.Leu1367Pro	missense_variant	MODERATE	0/1	0.0000008	29.6	0.91	deleterious	probably_damaging	.	8
+5	15	55555555	G	C	ARID1B	NM_020732.4:c.2000+1G>C	.	splice_donor_variant	HIGH	0/1	0.000003	30.5	.	.	.	likely_pathogenic	7
+6	16	89311234	CT	C	ANKRD11	NM_013275.6:c.1890del	NP_037407.4:p.Lys630fs	frameshift_variant	HIGH	0/1	0	35.2	.	.	.	.	7
+7	19	77777777	C	G	KDM5C	NM_004187.4:c.800C>G	NP_004178.2:p.Pro267Arg	missense_variant	MODERATE	0/1	0.00009	22.4	0.68	deleterious	probably_damaging	.	7
+8	21	21212121	C	G	ANKRD11	NM_013275.6:c.8000C>G	NP_037407.4:p.Ter2667Trp	stop_lost	HIGH	0/1	0	33.8	.	.	.	.	7
+9	10	10101010	A	G	ANKRD11	NM_013275.6:c.900A>G	NP_037407.4:p.Ile300Met	missense_variant	MODERATE	0/1	0.00005	20.1	0.52	deleterious	benign	.	6
