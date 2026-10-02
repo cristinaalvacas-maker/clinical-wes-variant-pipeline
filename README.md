@@ -1,19 +1,19 @@
 # Clinical WES Variant Filtering & Prioritization Pipeline
 
-Dependency-free exploratory Python pipeline for single-sample, VEP-annotated WES VCFs. It filters **ALT alleles, not transcripts**, preserves all matched CSQ annotations and scores each candidate only once. It is a research/portfolio tool, not a validated clinical classifier or ACMG/AMP interpretation engine.
+Dependency-free exploratory, single-sample VEP-annotated WES variant filtering. **Research/portfolio demonstration only; not clinically validated and does not make ACMG/AMP classifications.**
 
-## Workflow
+## Processing
 
-1. Parse CSQ fields from the VCF header and separate multi-ALT records.
-2. Apply QC (FILTER=PASS, QUAL >= 30, DP >= 20, GQ >= 20).
-3. Apply gnomAD AF threshold (default dominant < 1e-5, recessive < 0.05). Missing AF is UNKNOWN, not zero; inconsistent or invalid annotations go to review.
-4. Retain a variant if **any** matched transcript has HIGH or MODERATE impact; keep *all* matched transcript annotations, even LOW/MODIFIER. Neither Feature nor CANONICAL is required.
-5. Annotate ALT dosage and simple inheritance compatibility **without excluding by genotype or inheritance**. This is descriptive only: no compound-heterozygosity, segregation, X-linked or gene-specific mechanism inference.
-6. Prioritize each candidate ALT once using panel membership, rarity, impact and available prediction/ClinVar annotations. Scores are exploratory, not pathogenicity probabilities.
+- Each ALT allele is handled independently; all matched CSQ/transcript annotations are retained in `all_csq_json` in its output row. CANONICAL and Feature are optional metadata and never filter an allele.
+- QC requires FILTER=PASS, QUAL >= 30, DP >= 20, GQ >= 20 by default. At least one transcript must have HIGH/MODERATE impact.
+- **Both AF lanes run in one pass, regardless of `--model` or genotype:**
+  - Primary: known gnomAD AF < `1e-5` (strict).
+  - Additional: `1e-5` <= known AF < `0.05` (extended). No duplicate between lanes.
+  - AF >= `0.05`: excluded. Unknown AF remains in primary with `frequency_status=UNKNOWN` and is **not assumed rare**; invalid, incomplete or discordant annotation AF goes to review in the excluded/audit TSV.
+- Inheritance compatibility and ALT dosage are descriptive metadata only. Neither heterozygous nor homozygous genotypes are excluded based on `--model`. Compound heterozygosity, segregation and X-linked rules are not assessed.
+- Prioritization awards evidence once per ALT allele, never once per transcript. A HIGH/MODERATE annotation on any matched transcript may retain the allele; all LOW/MODIFIER annotations remain visible too.
 
-## Run
-
-From the repository root (Python 3.10+; no external packages):
+## Run from repository root
 
 ```bash
 python3 src/variant_pipeline.py \
@@ -23,28 +23,23 @@ python3 src/variant_pipeline.py \
   --model dominant
 ```
 
-`--model recessive` changes the AF cutoff and the **informational** inheritance compatibility label; it does not discard alleles on genotype grounds. AF thresholds may be changed using `--maf-dominant` and `--maf-recessive`. Other parameters: `--min-qual`, `--min-dp`, `--min-gq`, `--transcript-override` (TSV columns `chrom pos ref alt transcript`). Transcript overrides affect reference metadata, not filtering or scoring.
+`--model recessive` changes the descriptive `inheritance_compatibility` label, **not** which AF lane receives a variant. Optional `--maf-dominant` (default `1e-5`) sets the primary boundary and `--maf-recessive` (default `0.05`) sets the additional lane's upper boundary; both must be ordered correctly. These option names are retained for CLI compatibility.
 
-## Three separate outputs
+## Independent outputs
 
-| Output | Contents |
-| --- | --- |
-| `results/candidates.tsv` | **Only** ranked candidates, one row per ALT; all matched CSQ transcript annotations in `all_csq_json`; genotype, ALT dosage and descriptive inheritance compatibility. |
-| `results/candidates.excluded.tsv` | QC, frequency and consequence exclusions **plus unresolved review cases**, each with explicit `status` and `reason`; full annotations retained in `all_csq_json`. Review is not synonymous with exclusion. |
-| `results/candidates.report.txt` | Run settings, counts, candidate evidence, audit summary and limitations. |
+| File | Content |
+|---|---|
+| `results/candidates.tsv` | Primary strict-AF candidates only (and explicitly flagged UNKNOWN AF candidates) |
+| `results/candidates.additional_candidates.tsv` | Additional AF-lane candidates only; no duplicates with primary |
+| `results/candidates.excluded.tsv` | QC, consequence, AF exclusions and annotation review cases, with reasons |
+| `results/candidates.report.txt` | Counts for both lanes, exclusions and evidence for ranked candidates |
 
-No `excluded_inheritance` status exists. An allele with ALT dosage different from the simple selected model remains a candidate if it passes QC, AF and consequence. The report does not automatically designate incidental/secondary findings; those require expert interpretation and appropriate clinical context.
+All three TSVs preserve every ALT-matched transcript annotation in `all_csq_json`. Output rows are one per ALT allele, not one per transcript. Accounting should satisfy: primary + additional + excluded/review = total ALT alleles processed.
 
-**Important:** `--model dominant` still uses the *dominant AF threshold*. A rare homozygous allele below that threshold is retained, but an allele above it can still be excluded by frequency. Choose frequency settings consciously when looking for findings outside the primary hypothesis.
-
-## Tests and GitHub Actions
+## Tests
 
 ```bash
-python3 -m unittest discover -s src -p 'test_*.py' -v
+python3 -m unittest discover -s src -p "test_*.py" -v
 ```
 
-The suite tests multi-ALT parsing, all-transcript handling, absent CANONICAL/Feature, frequency edge cases, genotype retention in both modes, output separation and score-once behavior. GitHub Actions runs these tests and the repository's original 23-ALT demo VCF. A successful workflow is a reproducibility check, **not** clinical validation.
-
-## Limitations
-
-Single-sample diploid exploratory analysis; simple SNV/indel allele matching requires further validation on representative VEP output. Ambiguous CSQ-to-ALT mapping and invalid/conflicting frequency are marked for review instead of guessed. This pipeline does not establish transcript tissue expression, disease mechanism, phase, compound heterozygosity, segregation, CNVs or pathogenicity classification.
+The existing GitHub Actions workflow executes the same tests and runs the original synthetic 23-ALT VCF. It uploads the generated `results/candidates.*` artifact. Passing synthetic tests is not clinical validation. See the report and excluded TSV for any uncertainties; this program does not infer tissue relevance, gene-disease mechanism, clinical actionability or ACMG secondary findings.
