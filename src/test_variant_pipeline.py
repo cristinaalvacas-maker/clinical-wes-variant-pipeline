@@ -51,10 +51,11 @@ class PipelineTests(unittest.TestCase):
         v=self.run_case([self.rec(101,'G',[ann('G','ENST1','YES','LOW'),ann('G','ENST2','NO','HIGH')])])[0]
         self.assertEqual(v.status,'candidate')
         self.assertIsNotNone(v.score)
-        with open(self.root/'out'/'candidates.transcript_review.tsv') as fh:
+        with open(self.root/'out'/'candidates.tsv') as fh:
             rows=list(csv.DictReader(fh,delimiter='\t'))
-        self.assertEqual(len(rows),2)
-        self.assertIn('HIGH',[x['IMPACT'] for x in rows])
+        self.assertEqual(len(rows),1)
+        self.assertIn('HIGH', rows[0]['all_csq_json'])
+        self.assertIn('LOW', rows[0]['all_csq_json'])
         self.assertIn('101', (self.root/'out'/'candidates.report.txt').read_text())
 
     def test_override_reprocesses_high(self):
@@ -72,15 +73,37 @@ class PipelineTests(unittest.TestCase):
     def test_two_alts_no_cross_contamination_and_genotype(self):
         r=self.rec(103,'G,T',[ann('G','ENSTG','YES','LOW'),ann('T','ENSTT','YES','HIGH')],gt='0/2')
         vs=self.run_case([r]); self.assertEqual(len(vs),2)
-        self.assertEqual((vs[0].status,vs[1].status),('excluded_inheritance','candidate'))
+        self.assertEqual((vs[0].status,vs[1].status),('excluded_consequence','candidate'))
         self.assertEqual([x['Feature'] for x in vs[1].all_csq],['ENSTT'])
 
     def test_recessive_and_af_cutoff(self):
         r=self.rec(104,'G',[ann('G','ENST1','YES','HIGH',af='.04')],gt='1/1')
         self.assertEqual(self.run_case([r],model='recessive')[0].status,'candidate')
-        self.assertEqual(self.run_case([r],model='dominant')[0].status,'excluded_inheritance')
+        self.assertEqual(self.run_case([r],model='dominant')[0].status,'excluded_frequency')
         r2=self.rec(105,'G',[ann('G','ENST1','YES','HIGH',af='.05')],gt='1/1')
         self.assertEqual(self.run_case([r2],model='recessive')[0].status,'excluded_frequency')
+
+    def test_inheritance_never_excludes_rare_alleles_and_outputs_are_separate(self):
+        records = [self.rec(201,'G',[ann('G','ENST1',af='0.000001')],gt='1/1'),
+                   self.rec(202,'G',[ann('G','ENST2',af='0.000001')],gt='./.'),
+                   self.rec(203,'G',[ann('G','ENST3',af='0.02')],gt='0/1')]
+        vs=self.run_case(records,model='dominant')
+        self.assertEqual([v.status for v in vs],['candidate','candidate','excluded_frequency'])
+        self.assertEqual(vs[0].inheritance_compatibility,'other_dosage_review')
+        self.assertEqual(vs[1].inheritance_compatibility,'unknown_genotype')
+        with open(self.root/'out'/'candidates.tsv') as fh:
+            candidates=list(csv.DictReader(fh,delimiter='\t'))
+        with open(self.root/'out'/'candidates.excluded.tsv') as fh:
+            excluded=list(csv.DictReader(fh,delimiter='\t'))
+        self.assertEqual([r['pos'] for r in candidates],['201','202'])
+        self.assertEqual([r['pos'] for r in excluded],['203'])
+        self.assertIn('ENST1',candidates[0]['all_csq_json'])
+        self.assertEqual(candidates[0]['alt_dosage'],'2')
+
+    def test_recessive_mode_does_not_exclude_heterozygous_allele(self):
+        v=self.run_case([self.rec(204,'G',[ann('G','ENST1',af='0.000001')],gt='0/1')],model='recessive')[0]
+        self.assertEqual(v.status,'candidate')
+        self.assertIn('compound_het_not_assessed',v.inheritance_compatibility)
 
     def test_unknown_conflicting_and_invalid_af(self):
         for af,status in [('', 'candidate'),('nan','review'),('1.3','review')]:
