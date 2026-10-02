@@ -46,6 +46,8 @@ class Variant:
     gt: str
     gq: int
     csq: dict
+    all_csq: list = field(default_factory=list)
+    transcript_status: str = ""
     dropped_by: str = ""          # filter name that removed it, "" if kept
     drop_reason: str = ""
     score: int = 0
@@ -64,15 +66,17 @@ def parse_info(info_str):
 
 
 def parse_csq(csq_raw, csq_fields):
-    """Parse the first CSQ annotation (most severe consequence, VEP default order)."""
-    first = csq_raw.split(",")[0]
-    parts = first.split("|")
+    """Parse all CSQ transcript annotations into a list of dictionaries."""
+    annotations = csq_raw.split(",")
+    all_annotations = []
+    for annotation in annotations:
+        parts = annotation.split("|")
     # pad in case the annotation has fewer fields
-    parts += [""] * (len(csq_fields) - len(parts))
-    return dict(zip(csq_fields, parts))
+        parts += [""] * (len(csq_fields) - len(parts))
+        all_annotations.append(dict(zip(csq_fields, parts)))
+    return all_annotations
 
-
-def load_vcf(path):
+def load_vcf(path, transcript_id=None):
     variants = []
     csq_fields = None
     with open(path) as fh:
@@ -112,10 +116,27 @@ def load_vcf(path):
                 q = float(qual)
             except ValueError:
                 q = 0.0
+            all_csq = parse_csq(info["CSQ"], csq_fields)
+            selected = None
+            transcript_status = ""
+            if transcript_id is not None:
+                selected = next(
+                    (c for c in all_csq if c.get("Feature") == transcript_id),
+                    None
+                )
+                transcript_status = "manual" if selected is not None else "manual_not_found"
+            else:
+                selected = next(
+                    (c for c in all_csq if c.get("CANONICAL") == "YES"),
+                    None
+                )
+                transcript_status = "canonical" if selected is not None else "review"
             variants.append(Variant(
                 chrom=chrom, pos=int(pos), ref=ref, alt=alt,
                 qual=q, filt=filt, dp=dp, gt=s.get("GT", "./."), gq=gq,
-                csq=parse_csq(info["CSQ"], csq_fields),
+                csq=selected if selected is not None else {},
+                all_csq=all_csq,
+                transcript_status=transcript_status,
             ))
     return variants
 
@@ -155,11 +176,12 @@ def frequency_filter(v, maf_cutoff):
     return True, ""
 
 def consequence_filter(v):
-    impact = v.csq.get("IMPACT", "")
-    if impact not in KEEP_IMPACTS:
-        return False, f"IMPACT={impact or 'missing'} ({v.csq.get('Consequence','')})"
-    return True, ""
-
+    impacts = {c.get("IMPACT", "") for c in v.all_csq}
+    if impacts & KEEP_IMPACTS:
+        return True, ""
+    if v.transcript_status in ("review", "manual_not_found"):
+        return True, "TRANSCRIPT_REVIEW_REQUIRED"
+    return False, f"No HIGH/MODERATE consequence found (IMPACTS={impacts})"
 
 def inheritance_filter(v, model):
     gt = v.gt.replace("|", "/")
