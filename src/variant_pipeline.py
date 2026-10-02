@@ -63,21 +63,31 @@ def parse_info(info_str):
     return info
 
 
-def parse_csq(csq_raw):
+def parse_csq(csq_raw, csq_fields):
     """Parse the first CSQ annotation (most severe consequence, VEP default order)."""
     first = csq_raw.split(",")[0]
     parts = first.split("|")
     # pad in case the annotation has fewer fields
-    parts += [""] * (len(CSQ_FIELDS) - len(parts))
-    return dict(zip(CSQ_FIELDS, parts))
+    parts += [""] * (len(csq_fields) - len(parts))
+    return dict(zip(csq_fields, parts))
 
 
 def load_vcf(path):
     variants = []
+    csq_fields = None
     with open(path) as fh:
         for line in fh:
+            if line.startswith("##INFO=<ID=CSQ,"):
+                if "Format: " not in line:
+                  raise ValueError("CSQ header found, but Format definition is missing")
+                csq_fields = line.split("Format: ", 1)[1]
+                csq_fields = csq_fields.split('"', 1)[0]
+                csq_fields = csq_fields.split("|")
+                continue
             if line.startswith("#"):
                 continue
+            if csq_fields is None:
+                raise ValueError("CSQ format definition not found in VCF header")
             cols = line.rstrip("\n").split("\t")
             if len(cols) < 10:
                 continue
@@ -105,7 +115,7 @@ def load_vcf(path):
             variants.append(Variant(
                 chrom=chrom, pos=int(pos), ref=ref, alt=alt,
                 qual=q, filt=filt, dp=dp, gt=s.get("GT", "./."), gq=gq,
-                csq=parse_csq(info["CSQ"]),
+                csq=parse_csq(info["CSQ"], csq_fields),
             ))
     return variants
 
