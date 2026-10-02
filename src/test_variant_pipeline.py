@@ -49,8 +49,8 @@ class PipelineTests(unittest.TestCase):
 
     def test_canonical_low_alt_high_is_review_not_lost(self):
         v=self.run_case([self.rec(101,'G',[ann('G','ENST1','YES','LOW'),ann('G','ENST2','NO','HIGH')])])[0]
-        self.assertEqual(v.status,'review')
-        self.assertIsNone(v.score)
+        self.assertEqual(v.status,'candidate')
+        self.assertIsNotNone(v.score)
         with open(self.root/'out'/'candidates.transcript_review.tsv') as fh:
             rows=list(csv.DictReader(fh,delimiter='\t'))
         self.assertEqual(len(rows),2)
@@ -65,9 +65,9 @@ class PipelineTests(unittest.TestCase):
 
     def test_missing_canonical_and_invalid_override(self):
         record=self.rec(102,'G',[ann('G','ENST1','NO','HIGH')])
-        self.assertEqual(self.run_case([record])[0].status,'review')
+        self.assertEqual(self.run_case([record])[0].status,'candidate')
         v=self.run_case([record],overrides=[('1','102','A','G','ENST_BAD')])[0]
-        self.assertEqual((v.status,v.transcript_status),('review','manual_not_found'))
+        self.assertEqual((v.status,v.transcript_status),('candidate','manual_not_found'))
 
     def test_two_alts_no_cross_contamination_and_genotype(self):
         r=self.rec(103,'G,T',[ann('G','ENSTG','YES','LOW'),ann('T','ENSTT','YES','HIGH')],gt='0/2')
@@ -96,9 +96,26 @@ class PipelineTests(unittest.TestCase):
         path=self.vcf([self.rec(108,'G',[reversed_ann])],fields)
         self.assertEqual(p.load_vcf(path)[0].csq['Feature'],'ENST1')
         bad=self.vcf([self.rec(108,'G',[reversed_ann])],fields[:-1])
-        # The removed field is Allele, so header validation must reject it.
+        # The removed field is Allele, which is essential for ALT matching.
         with self.assertRaisesRegex(ValueError,'missing required'):
             p.load_vcf(bad)
+
+    def test_missing_canonical_feature_still_filters(self):
+        fields=[f for f in FIELDS if f not in ('CANONICAL','Feature')]
+        values=dict(zip(FIELDS,ann('G','ENST1','YES','HIGH').split('|')))
+        reduced='|'.join(values.get(k,'') for k in fields)
+        path=self.vcf([self.rec(111,'G',[reduced])],fields)
+        vs=p.main(['--vcf',str(path),'--panel',str(self.root/'panel.txt'),
+                   '--out-prefix',str(self.root/'out'/'missing')])
+        self.assertEqual(vs[0].status,'candidate')
+        self.assertEqual(vs[0].transcript_status,'all_transcripts')
+
+    def test_all_transcripts_scored_once(self):
+        r=self.rec(112,'G',[ann('G','ENST1','YES','HIGH'),ann('G','ENST2','NO','HIGH')])
+        one=self.run_case([self.rec(113,'G',[ann('G','ENST1','YES','HIGH')])])[0]
+        two=self.run_case([r])[0]
+        self.assertEqual(one.score,two.score)
+        self.assertEqual(two.status,'candidate')
 
     def test_indel_allele_and_output_accounting(self):
         r=self.rec(109,'AT',[ann('T','ENST1','YES','HIGH')],ref='A')
