@@ -1,0 +1,44 @@
+
+name: WES Pipeline Tests
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Check Python syntax
+        run: python -m py_compile src/variant_pipeline.py
+
+      - name: Run automated tests
+        run: python -m unittest discover -s src -p "test_*.py" -v
+
+      - name: Run demo VCF
+        run: |
+          python src/variant_pipeline.py \
+            --vcf data/demo_annotated.vcf \
+            --panel data/hpo_gene_panel.txt \
+            --out-prefix results/candidates \
+            --model dominant
+
+      - name: Display demo report
+        if: success()
+        run: cat results/candidates.report.txt
+
+      - name: Upload demo results
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wes-demo-results
+          path: results/candidates.*
