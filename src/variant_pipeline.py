@@ -254,15 +254,17 @@ def apply_filters(variants, args):
         if v.frequency_status in ('INVALID_AF', 'INCOMPLETE_AF', 'CONFLICTING_AF'):
             v.status, v.reason = 'review', f'Frequency needs review: {v.frequency_status}'
             continue
-        maf = args.maf_recessive if args.model == 'recessive' else args.maf_dominant
-        if v.af is not None and v.af >= maf:
-            v.status, v.reason = 'excluded_frequency', f'gnomAD_AF {v.af} >= {maf}'
+        # Independent, mutually exclusive frequency lanes; genotype never excludes.
+        # Unknown AF remains visible in the main lane, explicitly flagged as unknown.
+        if v.af is not None and v.af >= args.maf_recessive:
+            v.status, v.reason = 'excluded_frequency', f'gnomAD_AF {v.af} >= {args.maf_recessive}'
             continue
         impacts = {c.get('IMPACT', '') for c in v.all_csq}
         if not (impacts & KEEP_IMPACTS):
             v.status, v.reason = 'excluded_consequence', f'No HIGH/MODERATE annotation: {sorted(impacts)}'
             continue
-        v.status = 'candidate'
+        v.status = ('additional_candidate' if v.af is not None and v.af >= args.maf_dominant
+                    else 'candidate')
         notes = []
         if v.transcript_status == 'all_transcripts':
             notes.append('No canonical annotation: assessed all ALT-matched transcripts')
@@ -273,7 +275,7 @@ def apply_filters(variants, args):
         if len(impacts & KEEP_IMPACTS) > 1 or ('HIGH' in impacts and any(x not in KEEP_IMPACTS for x in impacts)):
             notes.append('Transcript impact discordance: inspect all annotations')
         v.reason = '; '.join(notes)
-    return [v for v in variants if v.status == 'candidate']
+    return [v for v in variants if v.status in ('candidate', 'additional_candidate')]
 
 
 def prioritize(variants, panel):
@@ -354,12 +356,16 @@ def write_table(path, columns, rows):
 def write_outputs(variants, ranked, args):
     prefix = Path(args.out_prefix)
     prefix.parent.mkdir(parents=True, exist_ok=True)
+    primary = [v for v in ranked if v.status == 'candidate']
+    additional = [v for v in ranked if v.status == 'additional_candidate']
     write_table(str(prefix) + '.tsv', ['rank'] + OUTPUT_FIELDS,
-                [candidate_row(v, i) for i, v in enumerate(ranked, 1)])
+                [candidate_row(v, i) for i, v in enumerate(primary, 1)])
+    write_table(str(prefix) + '.additional_candidates.tsv', ['rank'] + OUTPUT_FIELDS,
+                [candidate_row(v, i) for i, v in enumerate(additional, 1)])
     # Separate audit output: excluded/review alleles do not clutter candidate TSV.
     excluded = []
     for v in variants:
-        if v.status != 'candidate':
+        if v.status not in ('candidate', 'additional_candidate'):
             row = candidate_row(v)
             row['reason'] = v.reason
             excluded.append(row)
@@ -368,16 +374,25 @@ def write_outputs(variants, ranked, args):
     with open(str(prefix) + '.report.txt', 'w') as fh:
         fh.write('EXPLORATORY WES VARIANT FILTERING REPORT\n' + '=' * 48 + '\n')
         fh.write(f'Input: {args.vcf}\nPanel: {args.panel}\nModel: {args.model}\n')
-        fh.write(f'Cutoffs: dominant AF < {args.maf_dominant}, recessive AF < {args.maf_recessive}; '
+        fh.write(f'Parallel AF lanes: primary AF < {args.maf_dominant}, additional {args.maf_dominant} <= AF < {args.maf_recessive}; '
                  f'QUAL >= {args.min_qual}, DP >= {args.min_dp}, GQ >= {args.min_gq}; FILTER=PASS\n')
-        fh.write(f'ALT alleles processed: {len(variants)}\nCandidates: {len(ranked)}\n')
+        fh.write(f'ALT alleles processed: {len(variants)}\n'
+                 f'Primary candidates: {len(primary)}\nAdditional candidates: {len(additional)}\n'
+                 f'Excluded or review: {len(variants)-len(primary)-len(additional)}\n')
         for key, value in sorted(counts.items()):
             fh.write(f'  {key}: {value}\n')
         fh.write('\nCANDIDATES (one score per ALT, using all matched transcripts)\n')
-        for i, v in enumerate(ranked, 1):
+        for i, v in enumerate(primary, 1):
             fh.write(f'[{i}] {v.chrom}:{v.pos} {v.ref}>{v.alt} '
                      f'{v.csq.get("SYMBOL", "")} {v.csq.get("Feature", "")} '
                      f'[{v.csq.get("IMPACT", "")}] score={v.score}\n')
+            for item in v.evidence:
+                fh.write(f'  - {item}\n')
+            if v.reason:
+                fh.write(f'  REVIEW FLAG: {v.reason}\n')
+        fh.write('\nADDITIONAL CANDIDATES (strict AF failed; extended AF passed)\n')
+        for i, v in enumerate(additional, 1):
+            fh.write(f'[{i}] {v.chrom}:{v.pos} {v.ref}>{v.alt} AF={v.af} score={v.score}\n')
             for item in v.evidence:
                 fh.write(f'  - {item}\n')
             if v.reason:
@@ -397,7 +412,8 @@ def write_outputs(variants, ranked, args):
                  'X-linked handling, segregation or CNV analysis. '
                  'Unmatched/ambiguous CSQ allele mapping requires manual inspection. '
                  'Canonical is informational and never determines filtering or scoring. '
-                 'All ALT-matched CSQ annotations are retained per allele as JSON in candidates.tsv or excluded.tsv.\n')
+                 'Unknown AF stays in the primary file flagged UNKNOWN (not assumed rare). '
+                 'All ALT-matched CSQ annotations are retained per allele as JSON in the corresponding TSV.\n')
     return counts
 
 
@@ -409,17 +425,20 @@ def main(argv=None):
     parser.add_argument('--model', choices=['dominant', 'recessive'], default='dominant')
     parser.add_argument('--transcript-override', help='TSV: chrom pos ref alt transcript (tab-separated)')
     parser.add_argument('--maf-dominant', type=float, default=1e-5)
-    parser.add_argument('--maf-recessive', type=float, default=.05)
+    parser.add_argument('--maf-recessive', type=float, default=.05, help='Upper AF boundary of additional lane (exclusive)')
     parser.add_argument('--min-qual', type=float, default=30)
     parser.add_argument('--min-dp', type=int, default=20)
     parser.add_argument('--min-gq', type=int, default=20)
     args = parser.parse_args(argv)
+    if not (0 <= args.maf_dominant < args.maf_recessive <= 1):
+        parser.error('Require 0 <= --maf-dominant < --maf-recessive <= 1')
     overrides = load_overrides(args.transcript_override)
     variants = load_vcf(args.vcf, overrides)
     panel = load_panel(args.panel)
     ranked = prioritize(apply_filters(variants, args), panel)
     counts = write_outputs(variants, ranked, args)
-    print(f'Processed {len(variants)} ALT alleles: {len(ranked)} candidates, '
+    print(f'Processed {len(variants)} ALT alleles: {counts.get("candidate", 0)} primary, '
+          f'{counts.get("additional_candidate", 0)} additional, '
           f'{counts.get("review", 0)} review; wrote {args.out_prefix}.*')
     return variants
 
