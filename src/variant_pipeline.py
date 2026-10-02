@@ -128,7 +128,7 @@ def load_vcf(path, overrides=None):
                 if 'Format: ' not in line:
                     raise ValueError('CSQ header found without Format definition')
                 csq_fields = line.split('Format: ', 1)[1].split('"', 1)[0].rstrip('>\n').split('|')
-                required = {'Allele', 'Feature', 'CANONICAL', 'IMPACT', 'Consequence', 'gnomAD_AF'}
+                required = {'Allele', 'IMPACT', 'Consequence'}
                 missing = required - set(csq_fields)
                 if missing:
                     raise ValueError(f'CSQ Format missing required fields: {sorted(missing)}')
@@ -164,7 +164,7 @@ def load_vcf(path, overrides=None):
                     selection = 'manual' if selected else 'manual_not_found'
                 else:
                     selected = next((c for c in own if c.get('CANONICAL') == 'YES'), None)
-                    selection = 'canonical' if selected else 'review'
+                    selection = 'canonical' if selected else 'all_transcripts'
                 v = Variant(chrom, int(pos), ref, alt, q, filt, int(dp),
                             sample_data.get('GT', './.'), int(gq), selected or {}, own,
                             selection, alt_index=i+1)
@@ -173,9 +173,7 @@ def load_vcf(path, overrides=None):
                 elif not own:
                     v.status, v.reason = 'review', 'No CSQ annotation for this ALT'
                 elif selection == 'manual_not_found':
-                    v.status, v.reason = 'review', f'Requested transcript {requested} not found for this ALT'
-                elif selection == 'review':
-                    v.status, v.reason = 'review', 'No canonical transcript; select an ENST in overrides TSV'
+                    v.reason = f'Requested transcript {requested} not found; all transcripts remain in analysis'
                 variants.append(v)
     if csq_fields is None:
         raise ValueError('CSQ Format definition not found in VCF header')
@@ -231,8 +229,8 @@ def allele_frequency(v):
 
 
 def apply_filters(variants, args):
+    """Filter ALT alleles, not transcripts. No canonical annotation is required."""
     for v in variants:
-        # QC and allele-specific inheritance apply even to annotations requiring review.
         reason = qc_filter(v, args)
         if reason:
             v.status, v.reason = 'excluded_QC', reason
@@ -247,7 +245,7 @@ def apply_filters(variants, args):
         if args.model == 'recessive' and copies != 2:
             v.status, v.reason = 'excluded_inheritance', f'ALT dosage {copies}, expected 2 (simple recessive model)'
             continue
-        if v.status == 'review':
+        if v.status == 'review':  # Only uncertain CSQ-to-ALT mapping prevents safe filtering.
             continue
         v.af, v.frequency_status = allele_frequency(v)
         if v.frequency_status in ('INVALID_AF', 'INCOMPLETE_AF', 'CONFLICTING_AF'):
@@ -261,76 +259,83 @@ def apply_filters(variants, args):
         if not (impacts & KEEP_IMPACTS):
             v.status, v.reason = 'excluded_consequence', f'No HIGH/MODERATE annotation: {sorted(impacts)}'
             continue
-        selected_impact = v.csq.get('IMPACT', '')
-        if selected_impact not in KEEP_IMPACTS:
-            v.status, v.reason = 'review', 'Selected transcript is not HIGH/MODERATE; alternative transcript is'
-            continue
         v.status = 'candidate'
-        v.reason = ('Alternative transcript has HIGH impact; inspect alongside selected annotation'
-                    if selected_impact != 'HIGH' and 'HIGH' in impacts else '')
+        notes = []
+        if v.transcript_status == 'all_transcripts':
+            notes.append('No canonical annotation: assessed all ALT-matched transcripts')
+        if v.transcript_status == 'manual_not_found':
+            notes.append('Requested transcript not found; assessed all ALT-matched transcripts')
+        if v.csq and v.csq.get('IMPACT') not in KEEP_IMPACTS:
+            notes.append('Selected/canonical transcript LOW or MODIFIER; another transcript is HIGH/MODERATE')
+        if len(impacts & KEEP_IMPACTS) > 1 or ('HIGH' in impacts and any(x not in KEEP_IMPACTS for x in impacts)):
+            notes.append('Transcript impact discordance: inspect all annotations')
+        v.reason = '; '.join(notes)
     return [v for v in variants if v.status == 'candidate']
 
 
 def prioritize(variants, panel):
+    """Score once per ALT allele. Each evidence category contributes at most once."""
     for v in variants:
-        c = v.csq
+        annotations = v.all_csq
         score, evidence = 0, []
-        gene = c.get('SYMBOL', '')
-        if gene in panel:
+        genes = sorted({c.get('SYMBOL', '') for c in annotations if c.get('SYMBOL') in panel})
+        if genes:
             score += 2
-            evidence.append(f'in HPO candidate-gene panel ({gene})')
+            evidence.append(f'in HPO candidate-gene panel ({", ".join(genes)})')
         if v.af is None:
-            evidence.append('gnomAD AF unavailable (UNKNOWN)')
+            evidence.append(f'gnomAD AF unavailable ({v.frequency_status})')
         elif v.af == 0:
             score += 2
             evidence.append('gnomAD AF = 0 (reported value)')
         elif v.af < 1e-4:
             score += 1
             evidence.append(f'ultra-rare (gnomAD AF {v.af})')
-        impact = c.get('IMPACT', '')
-        if impact == 'HIGH':
+        impacts = {c.get('IMPACT', '') for c in annotations}
+        if 'HIGH' in impacts:
             score += 2
-            evidence.append(f'high-impact consequence ({c.get("Consequence")})')
-        elif impact == 'MODERATE':
+            evidence.append('HIGH consequence in at least one transcript')
+        elif 'MODERATE' in impacts:
             score += 1
-            evidence.append(f'moderate-impact consequence ({c.get("Consequence")})')
-        revel, cadd = number(c.get('REVEL'), 0), number(c.get('CADD_PHRED'), 0)
-        if revel >= .7:
+            evidence.append('MODERATE consequence in at least one transcript')
+        revel = [number(c.get('REVEL')) for c in annotations]
+        if any(x is not None and x >= .7 for x in revel):
             score += 1
-            evidence.append(f'REVEL {revel} (supporting computational evidence)')
-        if cadd >= 20:
+            evidence.append('REVEL >= 0.7 in at least one annotation')
+        cadd = [number(c.get('CADD_PHRED')) for c in annotations]
+        if any(x is not None and x >= 20 for x in cadd):
             score += 1
-            evidence.append(f'CADD {cadd} (supporting computational evidence)')
-        if c.get('SIFT', '').split('(')[0] == 'deleterious':
+            evidence.append('CADD >= 20 in at least one annotation')
+        if any(c.get('SIFT', '').split('(')[0] == 'deleterious' for c in annotations):
             score += 1
-            evidence.append('SIFT: deleterious')
-        if c.get('PolyPhen', '').split('(')[0] in ('probably_damaging', 'possibly_damaging'):
+            evidence.append('SIFT: deleterious in at least one annotation')
+        if any(c.get('PolyPhen', '').split('(')[0] in ('probably_damaging', 'possibly_damaging') for c in annotations):
             score += 1
-            evidence.append(f'PolyPhen: {c.get("PolyPhen")}')
-        clinvar = (c.get('ClinVar_CLNSIG') or '').lower()
-        if clinvar in ('pathogenic', 'pathogenic/likely_pathogenic'):
+            evidence.append('PolyPhen damaging in at least one annotation')
+        clinvars = {(c.get('ClinVar_CLNSIG') or '').lower() for c in annotations}
+        if 'pathogenic' in clinvars or 'pathogenic/likely_pathogenic' in clinvars:
             score += 2
-            evidence.append(f'ClinVar: {clinvar}')
-        elif clinvar == 'likely_pathogenic':
+            evidence.append('ClinVar: pathogenic annotation (verify clinical context)')
+        elif 'likely_pathogenic' in clinvars:
             score += 1
-            evidence.append('ClinVar: likely pathogenic')
-        elif clinvar:
-            evidence.append(f'ClinVar: {clinvar} (not automatically scored)')
+            evidence.append('ClinVar: likely pathogenic annotation (verify clinical context)')
+        elif any(clinvars):
+            evidence.append('ClinVar annotations require review; not automatically scored')
         v.score, v.evidence = score, evidence
     return sorted(variants, key=lambda v: (-v.score, v.chrom, v.pos, v.alt))
 
 
 def candidate_row(v, rank=''):
-    c = v.csq
+    annotations = v.all_csq
+    def unique(field):
+        return '; '.join(sorted({c.get(field, '') for c in annotations if c.get(field, '')}))
     return dict(rank=rank, chrom=v.chrom, pos=v.pos, ref=v.ref, alt=v.alt,
-                genotype=v.gt, gene=c.get('SYMBOL', ''), transcript=c.get('Feature', ''),
-                selection=v.transcript_status, consequence=c.get('Consequence', ''),
-                IMPACT=c.get('IMPACT', ''), gnomAD_AF='' if v.af is None else v.af,
-                frequency_status=v.frequency_status, CADD=c.get('CADD_PHRED', ''),
-                REVEL=c.get('REVEL', ''), SIFT=c.get('SIFT', ''),
-                PolyPhen=c.get('PolyPhen', ''), ClinVar=c.get('ClinVar_CLNSIG', ''),
-                score='' if v.score is None else v.score, evidence='; '.join(v.evidence),
-                status=v.status, reason=v.reason)
+                genotype=v.gt, gene=unique('SYMBOL'), transcript=unique('Feature'),
+                selection=v.transcript_status, consequence=unique('Consequence'),
+                IMPACT=unique('IMPACT'), gnomAD_AF='' if v.af is None else v.af,
+                frequency_status=v.frequency_status, CADD=unique('CADD_PHRED'),
+                REVEL=unique('REVEL'), SIFT=unique('SIFT'), PolyPhen=unique('PolyPhen'),
+                ClinVar=unique('ClinVar_CLNSIG'), score='' if v.score is None else v.score,
+                evidence='; '.join(v.evidence), status=v.status, reason=v.reason)
 
 
 def write_table(path, columns, rows):
@@ -368,7 +373,7 @@ def write_outputs(variants, ranked, args):
         fh.write(f'ALT alleles processed: {len(variants)}\nCandidates: {len(ranked)}\n')
         for key, value in sorted(counts.items()):
             fh.write(f'  {key}: {value}\n')
-        fh.write('\nCANDIDATES (selected-transcript score only)\n')
+        fh.write('\nCANDIDATES (one score per ALT, using all matched transcripts)\n')
         for i, v in enumerate(ranked, 1):
             fh.write(f'[{i}] {v.chrom}:{v.pos} {v.ref}>{v.alt} '
                      f'{v.csq.get("SYMBOL", "")} {v.csq.get("Feature", "")} '
@@ -391,7 +396,7 @@ def write_outputs(variants, ranked, args):
                  'Only diploid single-sample SNV/small-indel genotypes and simple heterozygous dominant / '
                  'homozygous recessive models; no compound heterozygosity, X-linked handling, segregation or CNV analysis. '
                  'Unmatched/ambiguous CSQ allele mapping requires manual inspection. '
-                 'Canonical is a default, not a guarantee of clinical relevance. '
+                 'Canonical is informational and never determines filtering or scoring. '
                  'All parsed ALT/transcript annotations, including excluded variants, are retained in the review TSV.\n')
     return counts
 
