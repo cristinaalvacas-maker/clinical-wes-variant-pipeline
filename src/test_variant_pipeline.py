@@ -78,8 +78,8 @@ class PipelineTests(unittest.TestCase):
 
     def test_recessive_and_af_cutoff(self):
         r=self.rec(104,'G',[ann('G','ENST1','YES','HIGH',af='.04')],gt='1/1')
-        self.assertEqual(self.run_case([r],model='recessive')[0].status,'candidate')
-        self.assertEqual(self.run_case([r],model='dominant')[0].status,'excluded_frequency')
+        self.assertEqual(self.run_case([r],model='recessive')[0].status,'additional_candidate')
+        self.assertEqual(self.run_case([r],model='dominant')[0].status,'additional_candidate')
         r2=self.rec(105,'G',[ann('G','ENST1','YES','HIGH',af='.05')],gt='1/1')
         self.assertEqual(self.run_case([r2],model='recessive')[0].status,'excluded_frequency')
 
@@ -88,7 +88,7 @@ class PipelineTests(unittest.TestCase):
                    self.rec(202,'G',[ann('G','ENST2',af='0.000001')],gt='./.'),
                    self.rec(203,'G',[ann('G','ENST3',af='0.02')],gt='0/1')]
         vs=self.run_case(records,model='dominant')
-        self.assertEqual([v.status for v in vs],['candidate','candidate','excluded_frequency'])
+        self.assertEqual([v.status for v in vs],['candidate','candidate','additional_candidate'])
         self.assertEqual(vs[0].inheritance_compatibility,'other_dosage_review')
         self.assertEqual(vs[1].inheritance_compatibility,'unknown_genotype')
         with open(self.root/'out'/'candidates.tsv') as fh:
@@ -96,7 +96,10 @@ class PipelineTests(unittest.TestCase):
         with open(self.root/'out'/'candidates.excluded.tsv') as fh:
             excluded=list(csv.DictReader(fh,delimiter='\t'))
         self.assertEqual([r['pos'] for r in candidates],['201','202'])
-        self.assertEqual([r['pos'] for r in excluded],['203'])
+        self.assertEqual([r['pos'] for r in excluded],[])
+        with open(self.root/'out'/'candidates.additional_candidates.tsv') as fh:
+            additional=list(csv.DictReader(fh,delimiter='\t'))
+        self.assertEqual([r['pos'] for r in additional],['203'])
         self.assertIn('ENST1',candidates[0]['all_csq_json'])
         self.assertEqual(candidates[0]['alt_dosage'],'2')
 
@@ -146,7 +149,39 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(v.status,'candidate')
         report=(self.root/'out'/'candidates.report.txt').read_text()
         self.assertIn('ALT alleles processed: 1',report)
-        self.assertIn('Candidates: 1',report)
+        self.assertIn('Primary candidates: 1',report)
+
+    def test_parallel_af_lanes_independent_of_model_and_dosage(self):
+        records = [self.rec(301,'G',[ann('G','E1',af='0.000001')],gt='1/1'),
+                   self.rec(302,'G',[ann('G','E2',af='0.001')],gt='0/1'),
+                   self.rec(303,'G',[ann('G','E3',af='0.049999')],gt='1/1'),
+                   self.rec(304,'G',[ann('G','E4',af='0.05')],gt='0/1'),
+                   self.rec(305,'G',[ann('G','E5',af='0.00001')],gt='0/1')]
+        for model in ('dominant','recessive'):
+            vs=self.run_case(records,model=model)
+            self.assertEqual([v.status for v in vs],
+                ['candidate','additional_candidate','additional_candidate',
+                 'excluded_frequency','additional_candidate'])
+            out=self.root/'out'
+            def positions(name):
+                with open(out/name) as fh:
+                    return [r['pos'] for r in csv.DictReader(fh,delimiter='\t')]
+            self.assertEqual(positions('candidates.tsv'),['301'])
+            self.assertEqual(set(positions('candidates.additional_candidates.tsv')),
+                             {'302','303','305'})
+            self.assertEqual(positions('candidates.excluded.tsv'),['304'])
+            self.assertEqual(len({v.key for v in vs}),5)
+            report=(out/'candidates.report.txt').read_text()
+            self.assertIn('Primary candidates: 1',report)
+            self.assertIn('Additional candidates: 3',report)
+
+    def test_unknown_af_visible_and_not_falsely_called_zero(self):
+        v=self.run_case([self.rec(306,'G',[ann('G','E6',af='')])])[0]
+        self.assertEqual((v.status,v.frequency_status,v.af),('candidate','UNKNOWN',None))
+        with open(self.root/'out'/'candidates.tsv') as fh:
+            row=next(csv.DictReader(fh,delimiter='\t'))
+        self.assertEqual(row['frequency_status'],'UNKNOWN')
+        self.assertEqual(row['gnomAD_AF'],'')
 
     def test_unmatched_csq_is_review(self):
         r=self.rec(110,'G',[ann('T','ENST1','YES','HIGH')])
