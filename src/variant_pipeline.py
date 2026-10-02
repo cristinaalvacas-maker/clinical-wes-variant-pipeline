@@ -6,6 +6,7 @@ Not a clinical classifier. Keeps an auditable record of every parsed ALT allele.
 import argparse
 import csv
 import math
+import json
 import sys
 from collections import Counter
 from dataclasses import dataclass, field
@@ -14,7 +15,8 @@ from pathlib import Path
 KEEP_IMPACTS = {"HIGH", "MODERATE"}
 OUTPUT_FIELDS = ["chrom", "pos", "ref", "alt", "genotype", "gene", "transcript",
                  "selection", "consequence", "IMPACT", "gnomAD_AF", "frequency_status",
-                 "CADD", "REVEL", "SIFT", "PolyPhen", "ClinVar", "score", "evidence", "status", "reason"]
+                 "CADD", "REVEL", "SIFT", "PolyPhen", "ClinVar", "score", "evidence", "status", "reason",
+                 "alt_dosage", "inheritance_compatibility", "all_csq_json"]
 REVIEW_FIELDS = ["chrom", "pos", "ref", "alt", "genotype", "variant_status", "reason",
                  "transcript", "gene", "CANONICAL", "MANE_SELECT", "Consequence", "IMPACT",
                  "gnomAD_AF", "selected", "selection_status"]
@@ -40,6 +42,8 @@ class Variant:
     score: int | None = None
     evidence: list = field(default_factory=list)
     alt_index: int = 1
+    alt_dosage: int | None = None
+    inheritance_compatibility: str = ""
 
     @property
     def key(self):
@@ -235,16 +239,15 @@ def apply_filters(variants, args):
         if reason:
             v.status, v.reason = 'excluded_QC', reason
             continue
+        # Inheritance is metadata, NEVER a reason to discard an allele.
         copies = allele_genotype(v)
+        v.alt_dosage = copies
         if copies is None:
-            v.status, v.reason = 'review', 'Missing/unsupported genotype; inspect ALT dosage'
-            continue
-        if args.model == 'dominant' and copies != 1:
-            v.status, v.reason = 'excluded_inheritance', f'ALT dosage {copies}, expected 1 (simple dominant model)'
-            continue
-        if args.model == 'recessive' and copies != 2:
-            v.status, v.reason = 'excluded_inheritance', f'ALT dosage {copies}, expected 2 (simple recessive model)'
-            continue
+            v.inheritance_compatibility = 'unknown_genotype'
+        elif args.model == 'dominant':
+            v.inheritance_compatibility = 'compatible_simple_dominant' if copies == 1 else 'other_dosage_review'
+        else:
+            v.inheritance_compatibility = 'compatible_simple_homozygous_recessive' if copies == 2 else 'other_dosage_review_compound_het_not_assessed'
         if v.status == 'review':  # Only uncertain CSQ-to-ALT mapping prevents safe filtering.
             continue
         v.af, v.frequency_status = allele_frequency(v)
@@ -335,7 +338,10 @@ def candidate_row(v, rank=''):
                 frequency_status=v.frequency_status, CADD=unique('CADD_PHRED'),
                 REVEL=unique('REVEL'), SIFT=unique('SIFT'), PolyPhen=unique('PolyPhen'),
                 ClinVar=unique('ClinVar_CLNSIG'), score='' if v.score is None else v.score,
-                evidence='; '.join(v.evidence), status=v.status, reason=v.reason)
+                evidence='; '.join(v.evidence), status=v.status, reason=v.reason,
+                alt_dosage='' if v.alt_dosage is None else v.alt_dosage,
+                inheritance_compatibility=v.inheritance_compatibility,
+                all_csq_json=json.dumps(annotations, ensure_ascii=False, separators=(',', ':')))
 
 
 def write_table(path, columns, rows):
@@ -350,20 +356,14 @@ def write_outputs(variants, ranked, args):
     prefix.parent.mkdir(parents=True, exist_ok=True)
     write_table(str(prefix) + '.tsv', ['rank'] + OUTPUT_FIELDS,
                 [candidate_row(v, i) for i, v in enumerate(ranked, 1)])
-    # Every parsed ALT is included here, including excluded variants and all alternative transcripts.
-    review_rows = []
+    # Separate audit output: excluded/review alleles do not clutter candidate TSV.
+    excluded = []
     for v in variants:
-        annotations = v.all_csq or [{}]
-        for c in annotations:
-            review_rows.append(dict(chrom=v.chrom, pos=v.pos, ref=v.ref, alt=v.alt,
-                                    genotype=v.gt, variant_status=v.status, reason=v.reason,
-                                    transcript=c.get('Feature', ''), gene=c.get('SYMBOL', ''),
-                                    CANONICAL=c.get('CANONICAL', ''), MANE_SELECT=c.get('MANE_SELECT', ''),
-                                    Consequence=c.get('Consequence', ''), IMPACT=c.get('IMPACT', ''),
-                                    gnomAD_AF=c.get('gnomAD_AF', ''),
-                                    selected='YES' if c is v.csq else 'NO',
-                                    selection_status=v.transcript_status))
-    write_table(str(prefix) + '.transcript_review.tsv', REVIEW_FIELDS, review_rows)
+        if v.status != 'candidate':
+            row = candidate_row(v)
+            row['reason'] = v.reason
+            excluded.append(row)
+    write_table(str(prefix) + '.excluded.tsv', ['rank'] + OUTPUT_FIELDS, excluded)
     counts = Counter(v.status for v in variants)
     with open(str(prefix) + '.report.txt', 'w') as fh:
         fh.write('EXPLORATORY WES VARIANT FILTERING REPORT\n' + '=' * 48 + '\n')
@@ -382,22 +382,22 @@ def write_outputs(variants, ranked, args):
                 fh.write(f'  - {item}\n')
             if v.reason:
                 fh.write(f'  REVIEW FLAG: {v.reason}\n')
-        fh.write('\nREVIEW QUEUE\n')
+        fh.write('\nREVIEW QUEUE (full details in excluded.tsv)\n')
         for v in variants:
             if v.status == 'review':
                 fh.write(f'{v.chrom}:{v.pos} {v.ref}>{v.alt}: {v.reason}\n')
                 fh.write('  Available ENSTs: ' + ', '.join(c.get('Feature', '') for c in v.all_csq) + '\n')
-        fh.write('\nEXCLUSIONS (auditable in transcript_review.tsv)\n')
+        fh.write('\nEXCLUSIONS (auditable in excluded.tsv)\n')
         for v in variants:
             if v.status.startswith('excluded_'):
                 fh.write(f'{v.chrom}:{v.pos} {v.ref}>{v.alt}: {v.status}: {v.reason}\n')
         fh.write('\nLIMITATIONS: Research/exploratory tool, not a clinical classification. '
                  'No tissue-expression or gene-disease mechanism inference. '
-                 'Only diploid single-sample SNV/small-indel genotypes and simple heterozygous dominant / '
-                 'homozygous recessive models; no compound heterozygosity, X-linked handling, segregation or CNV analysis. '
+                 'Inheritance compatibility is descriptive, never an exclusion; no compound heterozygosity, '
+                 'X-linked handling, segregation or CNV analysis. '
                  'Unmatched/ambiguous CSQ allele mapping requires manual inspection. '
                  'Canonical is informational and never determines filtering or scoring. '
-                 'All parsed ALT/transcript annotations, including excluded variants, are retained in the review TSV.\n')
+                 'All ALT-matched CSQ annotations are retained per allele as JSON in candidates.tsv or excluded.tsv.\n')
     return counts
 
 
